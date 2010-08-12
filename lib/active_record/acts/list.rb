@@ -85,22 +85,20 @@ module ActiveRecord
         end
 
         # Swap positions with the next lower item, if one exists.
-        def move_lower
+        def move_lower(by = 1)
           return unless lower_item
 
           acts_as_list_class.transaction do
-            lower_item.decrement_position
-            increment_position
+            increment_position(decrement_lower_items_position(by))
           end
         end
 
         # Swap positions with the next higher item, if one exists.
-        def move_higher
+        def move_higher(by = 1)
           return unless higher_item
 
           acts_as_list_class.transaction do
-            higher_item.increment_position
-            decrement_position
+            decrement_position(increment_higher_items_position(by))
           end
         end
 
@@ -133,15 +131,15 @@ module ActiveRecord
         end
 
         # Increase the position of this item without adjusting the rest of the list.
-        def increment_position
+        def increment_position(by = 1)
           return unless in_list?
-          update_attribute position_column, self.send(position_column).to_i + 1
+          update_attribute position_column, self.send(position_column).to_i + by
         end
 
         # Decrease the position of this item without adjusting the rest of the list.
-        def decrement_position
+        def decrement_position(by = 1)
           return unless in_list?
-          update_attribute position_column, self.send(position_column).to_i - 1
+          update_attribute position_column, self.send(position_column).to_i - by
         end
 
         # Return +true+ if this object is the first in the list.
@@ -162,6 +160,18 @@ module ActiveRecord
           acts_as_list_class.find(:first, :conditions =>
             "#{scope_condition} AND #{position_column} = #{(send(position_column).to_i - 1).to_s}"
           )
+        end
+
+        # Increments *items_count* amount of rows that are above current item
+        # returns count of updated rows
+        def increment_higher_items_position(items_count = 1)
+          acts_as_list_class.update_all "#{position_column} = #{position_column} + 1", "#{scope_condition} AND #{position_column} < #{send(position_column).to_i}", :limit => items_count, :order => "#{position_column} DESC"
+        end
+
+        # Decrements *items_count* amount of rows that are under current item
+        # returns count of updated rows
+        def decrement_lower_items_position(items_count = 1)
+          acts_as_list_class.update_all "#{position_column} = #{position_column} - 1", "#{scope_condition} AND #{position_column} > #{send(position_column).to_i}", :limit => items_count, :order => "#{position_column} ASC"
         end
 
         # Return the next lower item in the list.

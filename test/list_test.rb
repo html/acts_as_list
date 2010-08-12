@@ -8,14 +8,23 @@ require "#{File.dirname(__FILE__)}/../init"
 
 ActiveRecord::Base.establish_connection(:adapter => "sqlite3", :database => ":memory:")
 
+def suppress_stdout(&block)
+  old = $stdout
+  $stdout = StringIO.new
+  yield
+  $stdout = old
+end
+
 def setup_db
-  ActiveRecord::Schema.define(:version => 1) do
-    create_table :mixins do |t|
-      t.column :pos, :integer
-      t.column :parent_id, :integer
-      t.column :parent_type, :string
-      t.column :created_at, :datetime      
-      t.column :updated_at, :datetime
+  suppress_stdout do
+    ActiveRecord::Schema.define(:version => 1) do
+      create_table :mixins do |t|
+        t.column :pos, :integer
+        t.column :parent_id, :integer
+        t.column :parent_type, :string
+        t.column :created_at, :datetime      
+        t.column :updated_at, :datetime
+      end
     end
   end
 end
@@ -64,26 +73,61 @@ class ListTest < Test::Unit::TestCase
     teardown_db
   end
 
+  def assert_correct_positions
+    assert_equal [1, 2, 3, 4], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:pos)
+  end
+
   def test_reordering
+    assert_correct_positions = lambda do
+      assert_equal [1, 2, 3, 4], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:pos)
+    end
+
     assert_equal [1, 2, 3, 4], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions.call
 
     ListMixin.find(2).move_lower
     assert_equal [1, 3, 2, 4], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions.call
 
     ListMixin.find(2).move_higher
     assert_equal [1, 2, 3, 4], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions.call
 
     ListMixin.find(1).move_to_bottom
     assert_equal [2, 3, 4, 1], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions.call
 
     ListMixin.find(1).move_to_top
     assert_equal [1, 2, 3, 4], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions.call
 
     ListMixin.find(2).move_to_bottom
     assert_equal [1, 3, 4, 2], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions.call
 
     ListMixin.find(4).move_to_top
     assert_equal [4, 1, 3, 2], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions.call
+
+    ListMixin.find(2).move_higher(2)
+    assert_equal [4, 2, 1, 3], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions.call
+
+    ListMixin.find(4).move_lower(2)
+    assert_equal [2, 1, 4, 3], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions.call
+  end
+
+  def test_move_higher_by_to_large_moves_amount
+    ListMixin.find(2).move_higher(2)
+    assert_equal [2, 1, 3, 4], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions
+  end
+
+  def test_move_lower_by_to_large_moves_amount
+    ListMixin.find(3).move_lower(2)
+    assert_equal [1, 2, 4, 3], ListMixin.find(:all, :conditions => 'parent_id = 5', :order => 'pos').map(&:id)
+    assert_correct_positions
   end
 
   def test_move_to_bottom_with_next_to_last_item
